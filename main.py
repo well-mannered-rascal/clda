@@ -4,13 +4,15 @@ import requests
 import sys
 import os
 import json
+import base64
+from io import BytesIO
 from app_config import SD_API_URL, SD_API_PORT
 from wildcards.styles import STYLES
 from wildcards.expressions import EXPRESSIONS
 
 
 # TODO: These should all be configurable
-BASE_URL = f"{SD_API_URL}:{SD_API_PORT}"
+BASE_URL = f"http://{SD_API_URL}:{SD_API_PORT}"
 TXT2IMG = f"{BASE_URL}/sdapi/v1/txt2img"
 
 OUTPUT_DIR = "./output"
@@ -120,12 +122,18 @@ class DatasetBuilder:
             "cfg_scale": 7,
             "height": 980,
             "width": 640,
-            "n_iter": 4,
+            "n_iter": 1,
             "sampler_name": "Euler a",
             "steps": 25
         }
         payload["prompt"] = f"{self.base_positive}, {expression}, {style}"
         payload["negative_prompt"] = f"{self.base_negative}, {COMMON_NEG}"
+
+        # convert reference image to bytes
+        ref_file = BytesIO()
+        reference.image().save(ref_file, "png")
+        ref_bytes = ref_file.getvalue()
+        ref_b64 = base64.b64encode(ref_bytes).decode('utf-8')
 
         # Controlnet 
         payload["alwayson_scripts"] = {
@@ -135,10 +143,10 @@ class DatasetBuilder:
                     {
                         "control_mode" : "Balanced",
                         "enabled" : True,
-                        "guidance_end" : 0.8,
+                        "guidance_end" : 0.8,   # make this configurable
                         "guidance_start" : 0,
                         "hr_option" : "Both",
-                        "image" : reference.image().tobytes(),
+                        "image" : ref_b64, #f"{reference.image().tostring()}", # base64.b64encode(reference.image().tobytes()).decode('utf-8'),
                         "model" : "None",
                         "module" : "reference_only",
                         "pixel_perfect" : False,
@@ -146,11 +154,55 @@ class DatasetBuilder:
                         "resize_mode" : "Crop and Resize",
                         "threshold_a" : 0.5,
                         "threshold_b" : 0.5,
-                        "weight" : 0.85
+                        "weight" : 0.85     # make this configurable
+                    },
+                    {
+                        "control_mode": "Balanced",
+                        "enabled": True,
+                        "guidance_end": 0.3,    # variable
+                        "guidance_start": 0,
+                        "hr_option": "Both",
+                        "image": ref_b64,
+                        "input_mode": "simple",
+                        # "mask_image": null,
+                        "model": "control_v11p_sd15_canny [d14c016b]",
+                        "module": "canny",
+                        "pixel_perfect": True,
+                        # "processor_res": 512,
+                        "resize_mode": "Crop and Resize",
+                        "save_detected_map": False,
+                        "threshold_a": 100,
+                        "threshold_b": 200,
+                        "use_preview_as_input": False,
+                        "weight": 0.4
                     }
+                    # Worry about pose later :P
+                    # {
+                    #     "control_mode": "ControlNet is more important",
+                    #     "enabled": True,
+                    #     "guidance_end": 0.6,    # variable
+                    #     "guidance_start": 0,
+                    #     "hr_option": "Both",
+                    #     "image": {
+                    #         # "image": "base64image placeholder",
+                    #     },
+                    #     "input_mode": "simple",
+                    #     # "mask_image": null,
+                    #     "model": "control_v11p_sd15_openpose [cab727d4]",
+                    #     "module": "None",
+                    #     "pixel_perfect": True,
+                    #     # "processor_res": 512,
+                    #     "resize_mode": "Just Resize",
+                    #     "save_detected_map": False,
+                    #     "threshold_a": 0.5,
+                    #     "threshold_b": 0.5,
+                    #     "weight": 0.85  # variable
+                    # }
                 ]
             }
         }
+
+        return payload
 
     def run(self):
         """
@@ -171,7 +223,9 @@ class DatasetBuilder:
                     # build and send payload
                     payload = self.build_payload(expression, style, self.full_ref)
                     response = requests.post(url=TXT2IMG, json=payload)
-                    
+                    img_bytes = response.json()["images"][0]
+                    result_img = PIL.Image.open(BytesIO(base64.b64decode(img_bytes)))
+                    result_img.show()
                     # process image batch result
 
 
