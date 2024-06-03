@@ -9,6 +9,7 @@ from io import BytesIO
 from app_config import SD_API_URL, SD_API_PORT
 from wildcards.styles import STYLES
 from wildcards.expressions import EXPRESSIONS
+from wildcards.backgrounds import BACKGROUNDS
 
 
 # TODO: These should all be configurable
@@ -109,9 +110,9 @@ class DatasetBuilder:
         
         return True
     
-    def build_payload(self, expression: str, style: str, reference: CharacterReference) -> dict:
+    def build_payload(self, expression: str, background: str, reference: CharacterReference) -> dict:
         """
-        Given expression and style prompt snippets, construct the full payload
+        Given expression and background prompt snippets, construct the full payload
         necessary for a text2image API POST request. Adds the reference to the proper
         controlnet module payload objects.
         """
@@ -125,7 +126,9 @@ class DatasetBuilder:
             "sampler_name": "Euler a",
             "steps": 25
         }
-        payload["prompt"] = f"{self.base_positive}, {expression}, {style}"
+
+        dynamic_artists = '{2-5$$__artists__}'
+        payload["prompt"] = f"{self.base_positive}, {expression}, {background}, {dynamic_artists}"
         payload["negative_prompt"] = f"{self.base_negative}, {COMMON_NEG}"
 
         # convert reference image to bytes
@@ -228,12 +231,13 @@ class DatasetBuilder:
             os.mkdir(full_ref_output_path)
 
             # build and send prompt payloads, capture results
-            for expression in EXPRESSIONS:
-                for style in STYLES:
+            for background in BACKGROUNDS:
+                for expression in EXPRESSIONS:
+                
                     # for pose in POSES
 
                     # build and send payload
-                    payload = self.build_payload(expression, style, self.full_ref)
+                    payload = self.build_payload(expression, background, self.full_ref)
                     response = requests.post(url=TXT2IMG, json=payload).json()
                     
 
