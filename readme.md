@@ -12,6 +12,13 @@ A local CLI utility that interacts with a local A1111 instance.
 - The outputs include a wide variety across pose, expression, and style
 
 
+## Usage:
+- Create a new project directory with the full, half, bust, and face reference shots. Include what shot it is in the filename itself.
+- Create a json file with 'positive' and 'negative' properties that contain the base character description tokens
+- Run `python3 main.py "path/to/project/folder"`
+
+
+
 ### Stretch Goals
 - Clothing
 - Backgrounds
