@@ -1,10 +1,10 @@
-import PIL.Image
-import PIL
+from PIL import Image
 import requests
 import sys
 import os
 import json
 import base64
+from datetime import datetime
 from io import BytesIO
 from app_config import SD_API_URL, SD_API_PORT
 from wildcards.styles import STYLES
@@ -57,14 +57,14 @@ class CharacterReference:
         self._path = path
         
         try:
-            self._image = PIL.Image.open(self._path)
+            self._image = Image.open(self._path)
         except Exception as e:
             print(e)
 
     def path(self) -> str:
         return self._path
     
-    def image(self) -> PIL.Image.Image:
+    def image(self) -> Image.Image:
         return self._image
 
 
@@ -85,7 +85,6 @@ class DatasetBuilder:
             # load all file names
             file_paths = [f.lower() for f in os.listdir(self.project_dir) 
                      if os.path.isfile(os.path.join(self.project_dir, f))]
-            print(file_paths)
             
             # identify the specific reference types and prompt by file name
             for path in file_paths:
@@ -118,7 +117,7 @@ class DatasetBuilder:
         """
         # TODO: This should be configurable :P
         payload = {
-            "batch_size": 1,
+            "batch_size": 2,
             "cfg_scale": 7,
             "height": 980,
             "width": 640,
@@ -152,6 +151,7 @@ class DatasetBuilder:
                         "pixel_perfect" : False,
                         "processor_res" : 0.5,
                         "resize_mode" : "Crop and Resize",
+                        "save_detected_map": False,
                         "threshold_a" : 0.5,
                         "threshold_b" : 0.5,
                         "weight" : 0.85     # make this configurable
@@ -215,23 +215,32 @@ class DatasetBuilder:
             print("Failed to load reference images.")
             return
 
+        # build output directory for this run
+        self.run_output_path = os.path.join(self.project_dir, f"{datetime.now()}")
+        os.mkdir(self.run_output_path)
+
+
         # build prompts for each reference
         
         if self.full_ref.image() is not None:
+            # create output directory for this reference if not exists
+            full_ref_output_path = os.path.join(self.run_output_path, "FULL")
+            os.mkdir(full_ref_output_path)
+
+            # build and send prompt payloads, capture results
             for expression in EXPRESSIONS:
                 for style in STYLES:
+                    # for pose in POSES
+
                     # build and send payload
                     payload = self.build_payload(expression, style, self.full_ref)
-                    response = requests.post(url=TXT2IMG, json=payload)
-                    img_bytes = response.json()["images"][0]
-                    result_img = PIL.Image.open(BytesIO(base64.b64decode(img_bytes)))
-                    result_img.show()
-                    # process image batch result
+                    response = requests.post(url=TXT2IMG, json=payload).json()
+                    
 
-
-
-
-        
+                    for img_bytes in response.get("images", []):
+                        # decode response image bytes
+                        result_img = Image.open(BytesIO(base64.b64decode(img_bytes)))
+                        result_img.save(os.path.join(full_ref_output_path, f"{datetime.now()}"), "png")
 
 
 if __name__ == "__main__":
