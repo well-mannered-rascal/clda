@@ -53,6 +53,16 @@ Roadmap:
 #             for image in result.images:
 #                 image.show()
 
+def encode_file_to_base64(path):
+    with open(path, 'rb') as file:
+        return base64.b64encode(file.read()).decode('utf-8')
+
+
+def decode_and_save_base64(base64_str, save_path):
+    with open(save_path, "wb") as file:
+        file.write(base64.b64decode(base64_str))
+
+
 class CharacterReference:
     def __init__(self, path: str):
         self._path = path
@@ -67,7 +77,6 @@ class CharacterReference:
     
     def image(self) -> Image.Image:
         return self._image
-
 
 class DatasetBuilder:
     def __init__(self, project_dir: str):
@@ -207,6 +216,35 @@ class DatasetBuilder:
 
         return payload
 
+    def reference_workflow(
+            self, reference_img: CharacterReference, output_path: str, poses: str = ""):
+        """
+        Parameters
+        ---------
+        - reference_img: the image to use as reference
+        - output_path: path to save this workflow run's images
+        - poses: shot length keyword for which poses to use (if any) for this run. ("FULL", "HALF", "BUST", "CLOSE")
+        """
+
+        if poses:
+            # load pose collection for the desired shot length
+            pose_imgs = []
+
+
+        # build and send prompt payloads, capture results
+        for background in BACKGROUNDS:
+            for expression in EXPRESSIONS:
+                # for pose in pose_imgs TODO
+
+                # build and send payload
+                payload = self.build_payload(expression, background, reference_img)
+                response = requests.post(url=TXT2IMG, json=payload).json()
+                
+
+                for img_bytes in response.get("images", []):
+                    path = os.path.join(output_path, f"{datetime.now()}.png")
+                    decode_and_save_base64(img_bytes, path)
+
     def run(self):
         """
         Run the full dataset builder routine. Load the reference images from the
@@ -223,28 +261,37 @@ class DatasetBuilder:
         os.mkdir(self.run_output_path)
 
 
-        # build prompts for each reference
+        # build and execute prompts for each reference
         
         if self.full_ref.image() is not None:
             # create output directory for this reference if not exists
-            full_ref_output_path = os.path.join(self.run_output_path, "FULL")
-            os.mkdir(full_ref_output_path)
+            output_path = os.path.join(self.run_output_path, "FULL")
+            os.mkdir(output_path)
 
-            # build and send prompt payloads, capture results
-            for background in BACKGROUNDS:
-                for expression in EXPRESSIONS:
-                
-                    # for pose in POSES
+            self.reference_workflow(self.full_ref, output_path, poses="FULL")
 
-                    # build and send payload
-                    payload = self.build_payload(expression, background, self.full_ref)
-                    response = requests.post(url=TXT2IMG, json=payload).json()
-                    
+        if self.half_ref.image() is not None:
+            # create output directory for this reference if not exists
+            output_path = os.path.join(self.run_output_path, "HALF")
+            os.mkdir(output_path)
 
-                    for img_bytes in response.get("images", []):
-                        # decode response image bytes
-                        result_img = Image.open(BytesIO(base64.b64decode(img_bytes)))
-                        result_img.save(os.path.join(full_ref_output_path, f"{datetime.now()}"), "png")
+            self.reference_workflow(self.half_ref, output_path, poses="HALF")
+        
+        if self.bust_ref.image() is not None:
+            # create output directory for this reference if not exists
+            output_path = os.path.join(self.run_output_path, "BUST")
+            os.mkdir(output_path)
+
+            self.reference_workflow(self.bust_ref, output_path, poses="BUST")
+        
+        if self.close_ref.image() is not None:
+            # create output directory for this reference if not exists
+            output_path = os.path.join(self.run_output_path, "CLOSE", poses="CLOSE")
+            os.mkdir(output_path)
+
+            self.reference_workflow(self.close_ref, output_path)
+
+
 
 
 if __name__ == "__main__":
