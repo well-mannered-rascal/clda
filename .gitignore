@@ -1,3 +1,6 @@
 __pycache__
 .venv
 output
+
+# sample wildcards
+wildcards/styles.py
