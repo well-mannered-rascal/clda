@@ -19,7 +19,7 @@ TXT2IMG = f"{BASE_URL}/sdapi/v1/txt2img"
 OUTPUT_DIR = "./output"
 MODELS = ["yiffymix_v36.safetensors [fb27ebf750]"]
 
-COMMON_NEG = "blurry, soft focus, poor quality, bad quality, bad art, bad anatomy, bizarre anatomy, creepy, grotesque, nightmare, unsettling"
+COMMON_NEG = "colored sclera, blurry, soft focus, poor quality, bad quality, bad art, bad anatomy, bizarre anatomy, creepy, grotesque, nightmare, unsettling"
 
 
 """
@@ -129,21 +129,35 @@ class DatasetBuilder:
         necessary for a text2image API POST request. Adds the reference to the proper
         controlnet module payload objects.
         """
+        # config value TODO
+        desired_prompt_res = 960
+        
+        # Get ref image dimensions and aspect ratio.
+        ref_height = reference.image().height
+        ref_width = reference.image().width
+        
+        if ref_height > ref_width:
+            prompt_height = desired_prompt_res
+            prompt_width = (ref_width * desired_prompt_res) / ref_height
+        else:
+            prompt_width = desired_prompt_res
+            prompt_height = (ref_height * desired_prompt_res) / ref_width
+        
+
         # TODO: This should be configurable :P
         payload = {
             "batch_size": 2,
             "cfg_scale": 7,
-            "height": 980,
-            "width": 640,
+            "height": prompt_height,
+            "width": prompt_width,
             "n_iter": 1,
             "sampler_name": "Euler a",
             "steps": 25
         }
 
-        dynamic_artists = '{2-5$$__artists__}'
+        dynamic_artists = '{2-5$$__artists__}' # TODO load these from a local file
         pose_tags = pose.name().split(".")[0]
-        print(pose_tags)
-        payload["prompt"] = f"{self.base_positive}, {pose_tags}, {expression}, {background}, {dynamic_artists}"
+        payload["prompt"] = f"{self.base_positive}, {pose_tags}, {expression}, {background}, {dynamic_artists}, 'best quality, masterpiece'"
         payload["negative_prompt"] = f"{self.base_negative}, {COMMON_NEG}"
 
         # convert reference image to bytes
