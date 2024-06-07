@@ -19,13 +19,12 @@ TXT2IMG = f"{BASE_URL}/sdapi/v1/txt2img"
 OUTPUT_DIR = "./output"
 MODELS = ["yiffymix_v36.safetensors [fb27ebf750]"]
 
-COMMON_NEG = "colored sclera, blurry, soft focus, poor quality, bad quality, bad art, bad anatomy, bizarre anatomy, creepy, grotesque, nightmare, unsettling"
+COMMON_NEG = "colored sclera, blurry, soft focus, poor quality, bad quality, bad art, bad anatomy, bizarre anatomy, creepy, grotesque, nightmare, unsettling, text, artist name, signature"
 
 
 """
 Roadmap:
     - finish configuring controlnet base payloads
-    - handle txt2img response
 """
 
 
@@ -286,8 +285,12 @@ class DatasetBuilder:
             print("Failed to load reference images.")
             return
 
+        # Create run folder if not exists
+        run_output_dir = os.path.join(self.project_dir, "dataset_builder_runs")
+        os.makedirs(run_output_dir, exist_ok=True)
+
         # build output directory for this run
-        self.run_output_path = os.path.join(self.project_dir, f"{datetime.now()}")
+        self.run_output_path = os.path.join(run_output_dir, f"{datetime.now()}")
         os.mkdir(self.run_output_path)
 
 
