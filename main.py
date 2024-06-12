@@ -4,10 +4,12 @@ import sys
 import os
 import json
 import base64
+import random
 from datetime import datetime
 from io import BytesIO
 from app_config import SD_API_URL, SD_API_PORT
 from wildcards.styles import STYLES
+from wildcards.artists import ARTISTS
 from wildcards.expressions import EXPRESSIONS
 from wildcards.backgrounds import BACKGROUNDS
 
@@ -105,6 +107,7 @@ class DatasetBuilder:
                 if "full" in path:
                     self.full_ref = ReferenceImage(path)
                 elif "half" in path:
+                    print(path)
                     self.half_ref = ReferenceImage(path)
                 elif "bust" in path:
                     self.bust_ref = ReferenceImage(path)
@@ -122,7 +125,12 @@ class DatasetBuilder:
         
         return True
     
-    def build_payload(self, expression: str, background: str, reference: ReferenceImage, pose: ReferenceImage) -> dict:
+    def build_payload(
+            self, expression: str, 
+            background: str,
+            reference: ReferenceImage,
+            pose: ReferenceImage,
+            style: str) -> dict:
         """
         Given expression and background prompt snippets, construct the full payload
         necessary for a text2image API POST request. Adds the reference to the proper
@@ -145,18 +153,26 @@ class DatasetBuilder:
 
         # TODO: This should be configurable :P
         payload = {
-            "batch_size": 2,
+            "batch_size": 1,
             "cfg_scale": 7,
             "height": prompt_height,
             "width": prompt_width,
             "n_iter": 1,
             "sampler_name": "Euler a",
-            "steps": 25
+            "steps": 25,
+
         }
 
-        dynamic_artists = '{2-5$$__artists__}' # TODO load these from a local file
+        # If the style is RANDOM, pull a random set of artist names from the wildcard,
+        # otherwise pass style directly into the prompt
+        if style == "RANDOM":
+            style = ""
+            num_artists = random.randint(2, 6)
+            for _ in range(0, num_artists):
+                style += f"{ARTISTS[random.randint(0, len(ARTISTS) - 1)]}, "
+    
         pose_tags = pose.name().split(".")[0]
-        payload["prompt"] = f"{self.base_positive}, {pose_tags}, {expression}, {background}, {dynamic_artists}, 'best quality, masterpiece'"
+        payload["prompt"] = f"{self.base_positive}, {expression}, ({pose_tags}), {background}, {style}, (best quality, masterpiece)"
         payload["negative_prompt"] = f"{self.base_negative}, {COMMON_NEG}"
 
         # convert reference image to bytes
@@ -179,7 +195,7 @@ class DatasetBuilder:
                     {
                         "control_mode" : "Balanced",
                         "enabled" : True,
-                        "guidance_end" : 0.8,   # make this configurable
+                        "guidance_end" : 0.75,   # make this configurable
                         "guidance_start" : 0,
                         "hr_option" : "Both",
                         "image" : ref_b64,
@@ -191,19 +207,19 @@ class DatasetBuilder:
                         "save_detected_map": False,
                         "threshold_a" : 0.5,
                         "threshold_b" : 0.5,
-                        "weight" : 0.85     # make this configurable
+                        "weight" : 0.75     # make this configurable
                     },
                     {
-                        "control_mode": "Balanced",
+                        "control_mode": "My prompt is more important",
                         "enabled": True,
-                        "guidance_end": 0.3,    # variable
+                        "guidance_end": 0.25,    # variable
                         "guidance_start": 0,
                         "hr_option": "Both",
                         "image": ref_b64,
                         "input_mode": "simple",
                         # "mask_image": null,
-                        "model": "control_v11p_sd15_canny [d14c016b]",
-                        "module": "canny",
+                        "model": "control_v11p_sd15_lineart [43d4be0d]",
+                        "module": "lineart_standard (from white bg & black line)",
                         "pixel_perfect": True,
                         # "processor_res": 512,
                         "resize_mode": "Crop and Resize",
@@ -211,7 +227,7 @@ class DatasetBuilder:
                         "threshold_a": 100,
                         "threshold_b": 200,
                         "use_preview_as_input": False,
-                        "weight": 0.4
+                        "weight": 0.25
                     },
                     {
                         "control_mode": "ControlNet is more important",
@@ -229,7 +245,7 @@ class DatasetBuilder:
                         "save_detected_map": False,
                         "threshold_a": 0.5,
                         "threshold_b": 0.5,
-                        "weight": 0.85  # variable
+                        "weight": 1  # variable
                     }
                 ]
             }
@@ -262,17 +278,18 @@ class DatasetBuilder:
                 pose_imgs.append(ReferenceImage(pose_path))
 
         # build and send prompt payloads, capture results
-        for pose in pose_imgs:
-            for background in BACKGROUNDS:
-                for expression in EXPRESSIONS:
-                    # build and send payload
-                    payload = self.build_payload(expression, background, reference_img, pose)
-                    response = requests.post(url=TXT2IMG, json=payload).json()
-                    
-                    # save results
-                    for img_bytes in response.get("images", []):
-                        path = os.path.join(output_path, f"{datetime.now()}.png")
-                        decode_and_save_base64(img_bytes, path)
+        for style in STYLES:
+            for pose in pose_imgs:
+                for background in BACKGROUNDS:
+                    for expression in EXPRESSIONS:
+                        # build and send payload
+                        payload = self.build_payload(expression, background, reference_img, pose, style)
+                        response = requests.post(url=TXT2IMG, json=payload).json()
+                        
+                        # save results
+                        for img_bytes in response.get("images", []):
+                            path = os.path.join(output_path, f"{datetime.now()}.png")
+                            decode_and_save_base64(img_bytes, path)
 
     def run(self):
         """
@@ -296,33 +313,33 @@ class DatasetBuilder:
 
         # build and execute prompts for each reference
         
-        if self.full_ref.image() is not None:
+        # if self.full_ref.image() is not None:
+        #     # create output directory for this reference if not exists
+        #     output_path = os.path.join(self.run_output_path, "FULL")
+        #     os.mkdir(output_path)
+
+        #     self.reference_workflow(self.full_ref, output_path, poses="FULL")
+
+        if self.half_ref.image() is not None:
             # create output directory for this reference if not exists
-            output_path = os.path.join(self.run_output_path, "FULL")
+            output_path = os.path.join(self.run_output_path, "HALF")
             os.mkdir(output_path)
 
-            self.reference_workflow(self.full_ref, output_path, poses="FULL")
-
-        # if self.half_ref.image() is not None:
-        #     # create output directory for this reference if not exists
-        #     output_path = os.path.join(self.run_output_path, "HALF")
-        #     os.mkdir(output_path)
-
-        #     self.reference_workflow(self.half_ref, output_path, poses="HALF")
+            self.reference_workflow(self.half_ref, output_path, poses="HALF")
         
-        # if self.bust_ref.image() is not None:
-        #     # create output directory for this reference if not exists
-        #     output_path = os.path.join(self.run_output_path, "BUST")
-        #     os.mkdir(output_path)
+        if self.bust_ref.image() is not None:
+            # create output directory for this reference if not exists
+            output_path = os.path.join(self.run_output_path, "BUST")
+            os.mkdir(output_path)
 
-        #     self.reference_workflow(self.bust_ref, output_path, poses="BUST")
+            self.reference_workflow(self.bust_ref, output_path, poses="BUST")
         
-        # if self.close_ref.image() is not None:
-        #     # create output directory for this reference if not exists
-        #     output_path = os.path.join(self.run_output_path, "CLOSE", poses="CLOSE")
-        #     os.mkdir(output_path)
+        if self.close_ref.image() is not None:
+            # create output directory for this reference if not exists
+            output_path = os.path.join(self.run_output_path, "CLOSE")
+            os.mkdir(output_path)
 
-        #     self.reference_workflow(self.close_ref, output_path)
+            self.reference_workflow(self.close_ref, output_path, poses="CLOSE")
 
 
 
